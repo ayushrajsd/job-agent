@@ -1,152 +1,97 @@
 # Job Agent — Agentic Job System for Ayush Raj
 
-Two-agent pipeline built on the Claude API:
+Four-layer automated pipeline: daily sourcing -> deduplication -> Claude scoring -> weekly digest.
 
-1. **Job Finder Agent** — searches job boards daily, scores listings against Ayush's profile, and returns up to 10 qualifying roles as JSON.
-2. **Resume Tailor Agent** — takes a job listing and produces a tailored resume (markdown) with match analysis, changes summary, and optional cover note.
+```
+Layer 1 — Sourcing (daily, automated)
+  SerpApi (Google Jobs) + Adzuna API + LinkedIn RSS + startup.jobs RSS
+
+Layer 2 — Collect & Deduplicate (Google Apps Script)
+  Polls all sources, dedupes by URL, writes new rows to Google Sheet
+
+Layer 3 — Claude Scoring (triggered hourly)
+  Claude Haiku scores each JD 0-100 against Ayush's profile
+  Score >= 70 → flagged (green). Below 70 → archived (grey).
+
+Layer 4 — Weekly Digest
+  HTML email every Monday: top 5 flagged roles with score, fit summary, apply link
+  On-demand tailoring via the Node.js CLI or Claude.ai chat
+```
 
 ---
 
-## Setup
+## Primary system — Google Apps Script (Layers 1-4)
+
+**Start here.** Runs free on Google's servers. No hosting needed.
+
+See [`google-apps-script/README.md`](google-apps-script/README.md) for the full 15-minute setup guide.
+
+**Files:**
+
+| File | Role |
+|---|---|
+| `google-apps-script/Config.gs` | API keys, column constants, Claude scoring system prompt |
+| `google-apps-script/Sheet.gs` | Google Sheets read/write, deduplication, status updates |
+| `google-apps-script/Sources.gs` | SerpApi, Adzuna, RSS/Atom feed parsers |
+| `google-apps-script/Scorer.gs` | Claude Haiku API call + JSON response parser |
+| `google-apps-script/Digest.gs` | Weekly HTML email builder and sender |
+| `google-apps-script/Triggers.gs` | Register/remove daily, hourly, weekly cron triggers |
+| `google-apps-script/Main.gs` | Entry points: runSetup, runAll, runDailyFetch, runScoring, runDigest |
+
+**Data sources configured:**
+
+- `startup.jobs` RSS (devrel + AI)
+- `remoteok.com` RSS (developer relations)
+- `weworkremotely.com` RSS
+- LinkedIn saved-search RSS (add your URL in Config.gs)
+- SerpApi Google Jobs (5 queries: developer advocate, devrel, AI devrel, technical evangelist)
+- Adzuna API (4 queries)
+
+**Cost:** under $5/month total (Claude Haiku ~$1-3, SerpApi free tier or $50/month plan).
+
+---
+
+## On-demand resume tailor — Node.js CLI
+
+For any flagged role you want to pursue, the Node.js Resume Tailor Agent produces a
+tailored markdown resume with match analysis and optional cover note.
 
 ```bash
-# 1. Clone and install
-git clone <repo>
-cd job-agent
+# Setup
 npm install
+cp .env.example .env   # add ANTHROPIC_API_KEY
 
-# 2. Configure environment
-cp .env.example .env
-# Edit .env and add your keys:
-#   ANTHROPIC_API_KEY=sk-ant-...
-#   SERPAPI_KEY=...          (required for Job Finder)
+# Tailor from a saved jobs JSON file
+node dist/index.js tailor --file output/jobs/2026-04-28.json --rank 1
+node dist/index.js tailor --rank 1 --cover-note
 
-# 3. Build
+# Build
 npm run build
 ```
 
----
+Or paste the job description into [claude.ai](https://claude.ai) with the system prompt from
+`src/config/candidate.ts` → `RESUME_TAILOR_SYSTEM_PROMPT`.
 
-## Usage
+**Node.js source files:**
 
-### Find jobs (Job Finder Agent)
-
-```bash
-node dist/index.js find
-```
-
-Searches all configured job boards, scores listings, and saves results to `output/jobs/YYYY-MM-DD.json`. Prints a summary table to stdout.
-
-### Tailor resumes (Resume Tailor Agent)
-
-```bash
-# Tailor all jobs from the latest run
-node dist/index.js tailor
-
-# Tailor a specific job by rank
-node dist/index.js tailor --rank 1
-
-# Tailor with a cover note
-node dist/index.js tailor --rank 2 --cover-note
-
-# Tailor from a specific jobs file
-node dist/index.js tailor --file output/jobs/2026-04-28.json
-```
-
-Resumes are saved to `output/resumes/YYYY-MM-DD/<company>_<title>.md`.
-
-### Full pipeline
-
-```bash
-# Find jobs only (no auto-tailor)
-node dist/index.js run
-
-# Find + auto-tailor all qualifying listings
-node dist/index.js run --auto-tailor
-
-# Find + auto-tailor + include cover notes
-node dist/index.js run --auto-tailor --cover-note
-```
-
-### Daily scheduler
-
-```bash
-node dist/index.js schedule
-```
-
-Runs the full pipeline every day at **9:00 AM IST** (3:30 AM UTC). Uses `AUTO_TAILOR` and `COVER_NOTE` environment variables to control behavior.
-
-### Development (no build step)
-
-```bash
-npx ts-node src/index.ts find
-npx ts-node src/index.ts tailor --rank 1
-npx ts-node src/index.ts run --auto-tailor
-npx ts-node src/index.ts schedule
-```
+| File | Role |
+|---|---|
+| `src/config/candidate.ts` | Full candidate profile + both agent system prompts |
+| `src/agents/resumeTailor.ts` | Resume Tailor Agent (single-shot Claude call) |
+| `src/agents/jobFinder.ts` | Legacy agentic job finder (replaced by Apps Script) |
+| `src/agents/agentLoop.ts` | Reusable Claude agentic loop with tool use |
+| `src/orchestrator.ts` | File I/O, pipeline wiring |
+| `src/index.ts` | CLI entry point |
 
 ---
 
-## Environment variables
+## Environment variables (Node.js CLI only)
 
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | — | Anthropic API key |
-| `SERPAPI_KEY` | Yes (find) | — | SerpApi key for web search |
-| `CLAUDE_MODEL` | No | `claude-sonnet-4-6` | Claude model to use |
-| `AUTO_TAILOR` | No | `false` | Auto-tailor in `run` and `schedule` commands |
-| `COVER_NOTE` | No | `false` | Include cover note in tailored output |
-| `MAX_JOBS` | No | `10` | Max job listings per run |
-| `VERBOSE` | No | `false` | Enable debug-level logging |
+| Variable | Required | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | Yes | Anthropic key |
+| `CLAUDE_MODEL` | No | Default: `claude-sonnet-4-6` |
+| `COVER_NOTE` | No | `true` to include cover note |
+| `VERBOSE` | No | `true` for debug logging |
 
----
-
-## Output
-
-```
-output/
-  jobs/
-    2026-04-28.json        # Job listings from Job Finder
-  resumes/
-    2026-04-28/
-      supabase_developer-advocate.md
-      mistral-ai_ai-developer-advocate.md
-```
-
-Each `output/resumes/.../foo.md` contains:
-- Match analysis (strong match / partial match / gap per JD requirement)
-- Resume changes summary
-- Full tailored resume in markdown (ready for conversion to .docx)
-- Cover note (if requested)
-
----
-
-## Architecture
-
-```
-src/
-  index.ts              CLI entry point (commander)
-  orchestrator.ts       Pipeline: find -> save -> tailor -> save
-  scheduler.ts          node-cron daily scheduler (9 AM IST)
-  agents/
-    agentLoop.ts        Reusable Claude API agentic loop with tool use
-    jobFinder.ts        Job Finder Agent (web_search + web_fetch tools)
-    resumeTailor.ts     Resume Tailor Agent (single-shot, no tools)
-  tools/
-    webSearch.ts        SerpApi integration
-    webFetch.ts         HTML page fetcher with text extraction
-  config/
-    candidate.ts        Candidate profile + both agent system prompts
-  types/
-    index.ts            TypeScript interfaces
-  utils/
-    logger.ts           Timestamped logging
-```
-
-### Agentic loop
-
-The Job Finder runs a full agentic loop: Claude calls `web_search` and `web_fetch` tools iteratively until it has enough data to produce the final JSON array. The loop supports up to 30 iterations and uses prompt caching on the system prompt to reduce API costs.
-
-The Resume Tailor is a single-shot call (no tools needed) — it reasons over the base resume content embedded in the system prompt and produces structured markdown output.
-
-Both agents use `cache_control: { type: 'ephemeral' }` on their (large) system prompts to benefit from prompt caching on repeated runs.
+Google Apps Script API keys are stored in **Script Properties**, not here.
