@@ -22,7 +22,8 @@ const CONFIG = {
   // Max jobs to score per hourly run (avoids hitting the 6-min execution limit)
   MAX_SCORE_PER_RUN:  20,
 
-  // RSS feeds — add your LinkedIn saved-search RSS URL under 'linkedin'
+  // RSS feeds — keyword-specific search feeds only (no broad category feeds)
+  // Add your LinkedIn saved-search RSS URL when you have it.
   RSS_FEEDS: [
     {
       name:   'startup.jobs — devrel',
@@ -34,14 +35,23 @@ const CONFIG = {
     },
     {
       name:   'remoteok — devrel',
-      url:    'https://remoteok.com/remote-developer-relations-jobs.rss',
+      url:    'https://remoteok.com/remote-developer-advocate-jobs.rss',
+    },
+    // WeWorkRemotely: keyword search RSS — far more targeted than category feeds
+    {
+      name:   'weworkremotely — developer advocate',
+      url:    'https://weworkremotely.com/remote-jobs/search.rss?term=developer+advocate',
+    },
+    {
+      name:   'weworkremotely — developer relations',
+      url:    'https://weworkremotely.com/remote-jobs/search.rss?term=developer+relations',
     },
     {
       name:   'weworkremotely — devrel',
-      url:    'https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss',
+      url:    'https://weworkremotely.com/remote-jobs/search.rss?term=devrel',
     },
     // Uncomment and paste your LinkedIn saved-search RSS URL:
-    // { name: 'linkedin — devrel', url: 'PASTE_YOUR_LINKEDIN_RSS_URL_HERE' },
+    // { name: 'linkedin — devrel',    url: 'PASTE_YOUR_LINKEDIN_RSS_URL_HERE' },
     // { name: 'linkedin — ai-devrel', url: 'PASTE_YOUR_SECOND_LINKEDIN_RSS_URL_HERE' },
   ],
 
@@ -62,6 +72,36 @@ const CONFIG = {
     { what: 'technical instructor AI', where: 'remote' },
   ],
 };
+
+// ─── KEYWORD PRE-FILTER ───────────────────────────────────────────────────────
+// A job title or JD must contain at least one of these to pass to the sheet.
+// This runs before any Claude call — zero API cost, instant.
+// Lowercase only; matching is case-insensitive.
+const FILTER_KEYWORDS = [
+  'developer advocate',
+  'developer relations',
+  'devrel',
+  'technical evangelist',
+  'developer experience',
+  'community engineer',
+  'ai developer advocate',
+  'ai devrel',
+  'ml developer advocate',
+  'technical instructor',
+  'curriculum lead',
+  'curriculum developer',
+  'developer education',
+  'instructional designer',
+  'technical trainer',
+  'llm engineer',
+  'ai engineer',
+  'full-stack ai',
+  'rag engineer',
+  'agentic',
+  'ai trainer',
+  'ai evaluator',
+  'prompt engineer',
+];
 
 // ─── SHEET COLUMN INDICES (1-based, matches Apps Script getRange) ─────────────
 const COLS = {

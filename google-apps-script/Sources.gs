@@ -51,10 +51,14 @@ function Sources_fetchAll() {
     console.warn('ADZUNA_APP_ID/KEY not set — skipping Adzuna.');
   }
 
-  // Deduplicate: filter out URLs already in the sheet and duplicates within this batch
+  // Step 1 — keyword pre-filter (no API cost, runs before dedup)
+  const keywordFiltered = allJobs.filter(Sources_isRelevant);
+  console.log(`Sources_fetchAll: ${allJobs.length} raw → ${keywordFiltered.length} after keyword filter`);
+
+  // Step 2 — deduplicate against existing sheet URLs and within this batch
   const seen = new Set(existingUrls);
   const newJobs = [];
-  for (const job of allJobs) {
+  for (const job of keywordFiltered) {
     const url = (job.applyUrl || '').trim();
     if (url && !seen.has(url)) {
       seen.add(url);
@@ -62,7 +66,7 @@ function Sources_fetchAll() {
     }
   }
 
-  console.log(`Sources_fetchAll: ${allJobs.length} raw → ${newJobs.length} new after dedup`);
+  console.log(`Sources_fetchAll: ${keywordFiltered.length} keyword-matched → ${newJobs.length} new after dedup`);
   return newJobs;
 }
 
@@ -275,6 +279,15 @@ function Sources_stripHtml(html) {
     .replace(/\s{3,}/g, '\n\n')
     .trim()
     .slice(0, 4000); // keep it within Claude's useful range
+}
+
+/**
+ * Returns true if the job title or JD contains at least one keyword from FILTER_KEYWORDS.
+ * This is the pre-Claude gate — cheap string matching, no API calls.
+ */
+function Sources_isRelevant(job) {
+  const haystack = `${job.title} ${job.jdText}`.toLowerCase();
+  return FILTER_KEYWORDS.some((kw) => haystack.includes(kw));
 }
 
 function Sources_buildQueryString(params) {

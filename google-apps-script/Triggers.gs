@@ -1,6 +1,9 @@
 // ─── TRIGGER MANAGEMENT ──────────────────────────────────────────────────────
 // Run Triggers_setup() ONCE from the Apps Script editor after deployment.
-// All times are UTC; 9 AM IST = 3:30 AM UTC.
+// All times are UTC. Apps Script fires daily triggers within a ~1 hour window
+// of the specified hour, so atHour(3) fires between 3–4 AM UTC = 8:30–9:30 AM IST.
+// Do NOT combine nearMinute() with everyDays() — it is unreliable and often
+// causes the trigger to silently not register.
 
 /**
  * Creates all three time-based triggers.
@@ -9,29 +12,27 @@
 function Triggers_setup() {
   Triggers_teardown();
 
-  // 1. Daily fetch — 3:30 AM UTC (= 9:00 AM IST)
+  // 1. Daily fetch — fires between 3–4 AM UTC (= 8:30–9:30 AM IST)
   ScriptApp.newTrigger('runDailyFetch')
     .timeBased()
     .everyDays(1)
-    .atHour(3)        // Apps Script atHour is UTC-based
-    .nearMinute(30)
+    .atHour(3)
     .create();
 
-  // 2. Hourly scoring — picks up any 'new' rows written by the daily fetch
+  // 2. Hourly scoring — picks up 'new' rows within an hour of the daily fetch
   ScriptApp.newTrigger('runScoring')
     .timeBased()
     .everyHours(1)
     .create();
 
-  // 3. Weekly digest — every Monday at 3:30 AM UTC (= 9:00 AM IST)
+  // 3. Weekly digest — every Monday between 3–4 AM UTC (= 8:30–9:30 AM IST)
   ScriptApp.newTrigger('runDigest')
     .timeBased()
     .onWeekDay(ScriptApp.WeekDay.MONDAY)
     .atHour(3)
-    .nearMinute(30)
     .create();
 
-  console.log('Triggers created: runDailyFetch (daily 9 AM IST), runScoring (hourly), runDigest (Monday 9 AM IST)');
+  console.log('Triggers created: runDailyFetch (daily ~9 AM IST), runScoring (hourly), runDigest (Monday ~9 AM IST)');
 }
 
 /**
